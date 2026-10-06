@@ -1,5 +1,9 @@
 # Arquitetura (resumo aprovado)
 
+> **ATUALIZAÇÃO (proposta pendente de aprovação):** o requisito agora é uma plataforma 100% online.
+> O agente local do Windows e qualquer renderização/IA no PC foram **descartados**. Veja
+> [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md). As seções abaixo sobre agente local e render local estão superadas.
+
 Pipeline: Canal → Roteiro → Áudio → Imagens/Thumbnail → Montagem → Render → Publicação.
 
 - **web** (Next.js) → **api** (NestJS) → SQLite local (futuro: PostgreSQL via novos repositórios).
