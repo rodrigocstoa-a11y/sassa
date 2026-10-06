@@ -1,5 +1,5 @@
 'use client';
-import { AlertTriangle, Film, Loader, Tv, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Film, FileText, Loader, Tv, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { Badge, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -21,8 +21,9 @@ export function Dashboard() {
     <>
       <PageHeader title="Dashboard" description="Visão geral da produção." />
       {error && <ErrorBanner message={error} onRetry={reload} />}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Stat icon={Tv} label="Canais" value={data?.channels ?? null} pending={data ? undefined : 'Carregando…'} />
+        <Stat icon={FileText} label="Roteiros" value={data?.scripts ?? null} pending={data ? undefined : 'Carregando…'} />
         <Stat icon={Film} label="Vídeos produzidos" value={data?.videos ?? null} pending="Disponível com o módulo de Editor (Fase 7)" />
         <Stat icon={Loader} label="Tarefas em andamento" value={data?.tasksInProgress ?? null} pending="Disponível com a Fila de Produção (Fase 5)" />
         <Stat icon={AlertTriangle} label="Erros" value={data?.errors ?? null} pending="Disponível com a Fila de Produção (Fase 5)" />

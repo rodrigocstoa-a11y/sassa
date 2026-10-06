@@ -1,15 +1,16 @@
 # RRN Studio AI
 
 Plataforma para automatizar a produção de vídeos para YouTube: roteiro → áudio → imagens → montagem → publicação.
-Este repositório está na **Fase 1**: base do projeto, dashboard e gerenciamento de canais.
+Este repositório está na **Fase 2**: base, dashboard, canais e roteiros.
 
 ## Estado atual (honesto)
 
 | Módulo | Estado |
 |---|---|
 | Dashboard, Canais (CRUD), Configurações | **Funcionando**, com dados reais (SQLite local) |
-| Roteiros, Áudios, Imagens, Editor, Fila, YouTube, Agente local | **Não implementados**. As páginas dizem isso explicitamente |
-| Provedores de IA (LLM, TTS/Talkify Labs, imagens) | **Nenhum integrado.** Só existem as interfaces em `packages/shared/src/providers.ts` |
+| Roteiros (criar, editar, excluir, pesquisar, status, traduções vinculadas) | **Funcionando**. A geração por IA **não está configurada** (a interface avisa e o endpoint responde 501) |
+| Áudios, Imagens, Editor, Fila, YouTube, Agente local | **Não implementados**. As páginas dizem isso explicitamente |
+| Provedores de IA (LLM, TTS/Talkify Labs, imagens) | **Nenhum integrado.** Só existem as interfaces em `packages/shared/src/providers.ts` e o ponto de injeção `LLM_PROVIDER` (valor `null`) em `apps/api/src/scripts` |
 
 Nenhum serviço pago é usado e nenhuma chave de API é necessária.
 
@@ -58,6 +59,15 @@ data/             Banco local (não versionado)
 ```
 
 Ainda **não existem**: `apps/local-agent` (Fase 6), fila (Fase 5), `storage/` de mídia (Fases 3-4).
+
+## Roteiros (Fase 2)
+
+- Cada roteiro pertence a um canal e tem título, idioma, tema, conteúdo (até 1.000.000 de caracteres) e status: **Rascunho → Em revisão → Aprovado**. Revisão e aprovação exigem conteúdo.
+- **Pesquisa** em título, tema e conteúdo, sem diferenciar acentos nem maiúsculas, com filtros por canal, status e idioma.
+- **Traduções:** uma tradução é um roteiro vinculado ao original (um por idioma). Ela é criada vazia e o texto traduzido é colado/escrito no editor; **não há tradução automática**. A tradução é marcada como desatualizada se o original for editado depois dela.
+- Integridade: canal com roteiros e original com traduções não podem ser excluídos (a API responde 409); traduções mantêm o canal e o idioma do original.
+- **Ctrl+S** salva no editor; o navegador avisa se você fechar com alterações não salvas.
+- **Geração por IA:** o contrato (`POST /api/scripts/generate`) existe e valida o pedido, mas sem provedor responde **501**; nunca devolve texto simulado.
 
 ## Decisões desta fase
 

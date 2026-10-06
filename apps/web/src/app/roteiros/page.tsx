@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from '@/components/layout/ModulePlaceholder';
+import { ScriptsView } from '@/features/scripts/ScriptsView';
 
 export default function Page() {
-  return <ModulePlaceholder moduleKey="scripts" />;
+  return <ScriptsView />;
 }

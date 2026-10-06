@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Channel, ChannelInput } from '@rrn/shared';
 import { DATABASE } from '../database/database.module';
-import { ChannelsRepository } from './channels.repository';
+import { ChannelInUseError, ChannelsRepository } from './channels.repository';
 
 interface Row {
   id: string;
@@ -82,6 +82,11 @@ export class SqliteChannelsRepository extends ChannelsRepository {
   }
 
   remove(ownerId: string, id: string): boolean {
-    return this.db.prepare('DELETE FROM channels WHERE owner_id = ? AND id = ?').run(ownerId, id).changes > 0;
+    try {
+      return this.db.prepare('DELETE FROM channels WHERE owner_id = ? AND id = ?').run(ownerId, id).changes > 0;
+    } catch (err) {
+      if (/FOREIGN KEY/i.test(String((err as { message?: unknown })?.message))) throw new ChannelInUseError();
+      throw err;
+    }
   }
 }

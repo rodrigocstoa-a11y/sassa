@@ -1,5 +1,8 @@
 import type { Channel, ChannelInput } from '@rrn/shared';
 
+/** Lançado quando o canal ainda possui roteiros vinculados. */
+export class ChannelInUseError extends Error {}
+
 /** Contrato de persistência. SQLite hoje; PostgreSQL pode entrar na nuvem sem mudar o resto. */
 export abstract class ChannelsRepository {
   abstract list(ownerId: string): Channel[];

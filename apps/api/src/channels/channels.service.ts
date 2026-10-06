@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Channel, ChannelInput } from '@rrn/shared';
-import { ChannelsRepository } from './channels.repository';
+import { ChannelInUseError, ChannelsRepository } from './channels.repository';
 
 /** Até existir autenticação, toda requisição pertence ao usuário local. */
 export const LOCAL_OWNER = 'local';
@@ -34,6 +34,13 @@ export class ChannelsService {
   }
 
   remove(id: string): void {
-    if (!this.repo.remove(LOCAL_OWNER, id)) throw new NotFoundException('Canal não encontrado');
+    try {
+      if (!this.repo.remove(LOCAL_OWNER, id)) throw new NotFoundException('Canal não encontrado');
+    } catch (err) {
+      if (err instanceof ChannelInUseError) {
+        throw new ConflictException('Este canal possui roteiros. Exclua ou mova os roteiros antes de excluir o canal.');
+      }
+      throw err;
+    }
   }
 }

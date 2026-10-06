@@ -1,9 +1,9 @@
 import 'reflect-metadata';
-import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-let app: INestApplication;
+let app: NestExpressApplication;
 const valid = {
   name: 'Histórias Antigas',
   language: 'pt-BR',
@@ -18,9 +18,10 @@ const valid = {
 beforeAll(async () => {
   process.env.DATABASE_PATH = ':memory:';
   const { AppModule } = await import('../app.module');
+  const { configureApp } = await import('../configure-app');
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = mod.createNestApplication();
-  app.setGlobalPrefix('api');
+  app = mod.createNestApplication<NestExpressApplication>({ bodyParser: false });
+  configureApp(app);
   await app.init();
 });
 
