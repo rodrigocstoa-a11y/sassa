@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { PROVIDER_SLOTS } from '@rrn/shared';
 import { ChannelsService } from '../channels/channels.service';
 import { DATABASE } from '../database/database.module';
+import { AudiosService } from '../audios/audios.service';
 import { ScriptsService } from '../scripts/scripts.service';
 
 @Controller()
@@ -11,6 +12,7 @@ export class SystemController {
     @Inject(DATABASE) private readonly db: DatabaseSync,
     private readonly channels: ChannelsService,
     private readonly scripts: ScriptsService,
+    private readonly audios: AudiosService,
   ) {}
 
   @Get('health')
@@ -25,6 +27,7 @@ export class SystemController {
     return {
       channels: this.channels.count(),
       scripts: this.scripts.count(),
+      audios: this.audios.count(),
       videos: null,
       tasksInProgress: null,
       errors: null,

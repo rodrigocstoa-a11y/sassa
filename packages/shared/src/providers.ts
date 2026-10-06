@@ -15,10 +15,20 @@ export interface Voice {
   language: string;
 }
 
+export interface TtsSynthesisResult {
+  /** Bytes do áudio da parte (a plataforma cuida do armazenamento). */
+  data: Uint8Array;
+  mimeType: string;
+  durationMs?: number;
+}
+
 export interface TtsProvider {
   readonly id: string;
+  readonly name: string;
+  /** Limite de caracteres por requisição do provedor; define como o roteiro é dividido. */
+  readonly maxCharsPerRequest: number;
   listVoices(language?: string): Promise<Voice[]>;
-  synthesize(req: { text: string; voiceId: string; language: string }): Promise<{ audioPath: string; durationMs: number }>;
+  synthesize(req: { text: string; voiceId: string; language: string; speed?: number }): Promise<TtsSynthesisResult>;
 }
 
 export interface ImageProvider {
@@ -35,6 +45,6 @@ export interface ProviderSlot {
 
 export const PROVIDER_SLOTS: readonly Omit<ProviderSlot, 'configured'>[] = [
   { kind: 'llm', label: 'Geração de roteiros (LLM)', note: 'Interface pronta (Fase 2). Nenhum provedor conectado; a geração automática está desativada.' },
-  { kind: 'tts', label: 'Narração (TTS)', note: 'Fase 3. Talkify Labs aguarda a documentação da API.' },
+  { kind: 'tts', label: 'Narração (TTS)', note: 'Interface pronta (Fase 3). Nenhum provedor conectado; Talkify Labs aguarda a documentação da API.' },
   { kind: 'image', label: 'Geração de imagens', note: 'Fase 4. Opção local (ex.: Stable Diffusion) a avaliar para 6 GB de VRAM.' },
 ];

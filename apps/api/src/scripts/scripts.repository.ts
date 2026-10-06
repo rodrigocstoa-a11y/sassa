@@ -16,4 +16,5 @@ export abstract class ScriptsRepository {
   abstract remove(ownerId: string, id: string): boolean;
   abstract countByChannel(ownerId: string, channelId: string): number;
   abstract count(ownerId: string): number;
+  abstract countAudios(ownerId: string, scriptId: string): number;
 }

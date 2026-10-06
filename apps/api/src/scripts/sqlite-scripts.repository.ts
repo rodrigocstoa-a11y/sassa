@@ -117,4 +117,8 @@ export class SqliteScriptsRepository extends ScriptsRepository {
   count(ownerId: string) {
     return (this.db.prepare('SELECT COUNT(*) AS n FROM scripts WHERE owner_id = ?').get(ownerId) as { n: number }).n;
   }
+
+  countAudios(ownerId: string, scriptId: string) {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM audios WHERE owner_id = ? AND script_id = ?').get(ownerId, scriptId) as { n: number }).n;
+  }
 }

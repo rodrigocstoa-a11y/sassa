@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, ErrorBanner, Field, Input, Modal, Select } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { formatDateTime, formatMinutes, formatNumber } from '@/lib/format';
+import { AudiosPanel } from '@/features/audios/AudiosPanel';
 import { StatusBadge } from './StatusBadge';
 import { TranslationsPanel } from './TranslationsPanel';
 
@@ -221,7 +222,10 @@ export function ScriptEditor({ channels, script, defaultChannelId }: Props) {
           </section>
 
           {detail ? (
-            <TranslationsPanel script={detail} dirty={dirty} onCreated={(id) => router.push(`/roteiros/${id}`)} />
+            <>
+              <TranslationsPanel script={detail} dirty={dirty} onCreated={(id) => router.push(`/roteiros/${id}`)} />
+              <AudiosPanel scriptId={detail.id} />
+            </>
           ) : (
             <p className="rounded-xl border border-dashed border-border p-4 text-xs text-muted">
               Salve o roteiro para poder criar traduções vinculadas a ele.

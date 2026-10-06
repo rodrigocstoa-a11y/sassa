@@ -7,7 +7,7 @@ const replace = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, push: vi.fn() }) }));
 vi.mock('@/lib/api', async (orig) => {
   const mod = await orig<typeof import('@/lib/api')>();
-  return { ...mod, api: { createScript: vi.fn(), updateScript: vi.fn(), deleteScript: vi.fn(), createTranslation: vi.fn() } };
+  return { ...mod, api: { listAudios: vi.fn().mockResolvedValue({ items: [], total: 0 }), createScript: vi.fn(), updateScript: vi.fn(), deleteScript: vi.fn(), createTranslation: vi.fn() } };
 });
 
 import { api } from '@/lib/api';

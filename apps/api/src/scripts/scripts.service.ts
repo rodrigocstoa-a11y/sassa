@@ -60,6 +60,12 @@ export class ScriptsService {
     ) {
       throw new ConflictException('Este roteiro tem traduções vinculadas: não é possível mudar o canal ou o idioma.');
     }
+    if (
+      (input.channelId !== existing.channelId || input.language !== existing.language) &&
+      this.repo.countAudios(LOCAL_OWNER, id) > 0
+    ) {
+      throw new ConflictException('Este roteiro tem áudios vinculados: não é possível mudar o canal ou o idioma.');
+    }
 
     const approvedAt = input.status === 'approved' ? (existing.approvedAt ?? new Date().toISOString()) : null;
     this.repo.update(LOCAL_OWNER, id, this.toWrite(input, approvedAt));
@@ -70,6 +76,9 @@ export class ScriptsService {
     const existing = this.get(id);
     if (existing.translations.length > 0) {
       throw new ConflictException('Este roteiro tem traduções vinculadas. Exclua as traduções antes de excluir o original.');
+    }
+    if (this.repo.countAudios(LOCAL_OWNER, id) > 0) {
+      throw new ConflictException('Este roteiro possui áudios vinculados. Exclua os áudios antes de excluir o roteiro.');
     }
     this.repo.remove(LOCAL_OWNER, id);
   }

@@ -4,3 +4,5 @@ export * from './script';
 export * from './text';
 export * from './modules';
 export * from './providers';
+export * from './text-chunks';
+export * from './audio';

@@ -1,5 +1,5 @@
-import { ModulePlaceholder } from '@/components/layout/ModulePlaceholder';
+import { AudiosView } from '@/features/audios/AudiosView';
 
 export default function Page() {
-  return <ModulePlaceholder moduleKey="audio" />;
+  return <AudiosView />;
 }
