@@ -1,0 +1,20 @@
+{
+  "name": "rrn-studio-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RRN Studio AI - plataforma de produção automatizada de vídeos para YouTube",
+  "engines": { "node": ">=22.13" },
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "build:shared": "npm run build -w @rrn/shared",
+    "dev": "npm run build:shared && concurrently -n shared,api,web -c gray,cyan,magenta \"npm run dev -w @rrn/shared\" \"npm run dev -w @rrn/api\" \"npm run dev -w @rrn/web\"",
+    "build": "npm run build:shared && npm run build -w @rrn/api && npm run build -w @rrn/web",
+    "start": "concurrently -n api,web \"npm run start -w @rrn/api\" \"npm run start -w @rrn/web\"",
+    "test": "npm run build:shared && npm test -w @rrn/shared && npm test -w @rrn/api && npm test -w @rrn/web",
+    "typecheck": "npm run build:shared && npm run typecheck -w @rrn/api && npm run typecheck -w @rrn/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@rrn/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "test": "vitest run"
+  },
+  "dependencies": { "zod": "^4.0.0" },
+  "devDependencies": { "vitest": "^3.0.0" }
+}
