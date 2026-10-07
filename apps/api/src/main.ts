@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { port, role } from './config';
 import { configureApp } from './configure-app';
+import { listenWithFallback } from './listen';
 
 async function bootstrap() {
   if (role() === 'worker') {
@@ -19,7 +20,7 @@ async function bootstrap() {
   app.enableShutdownHooks();
   // HOST=0.0.0.0 na nuvem (atrás do proxy da plataforma); em desenvolvimento só loopback.
   const host = process.env.HOST ?? '127.0.0.1';
-  await app.listen(port(), host);
-  new Logger('API').log(`RRN Studio AI API em http://${host}:${port()}/api (função: ${role()})`);
+  const bound = await listenWithFallback(app, port(), host);
+  new Logger('API').log(`RRN Studio AI API em http://${bound}:${port()}/api (função: ${role()})`);
 }
 void bootstrap();

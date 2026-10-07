@@ -1,5 +1,7 @@
 # Como o RRN Studio AI fica online (guia de implantação)
 
+> Para publicar o **ambiente de teste (staging)** passo a passo, com o custo e a parada de aprovação, use [`STAGING.md`](STAGING.md). Este arquivo é a visão geral e a referência de variáveis.
+
 > **Estado:** nada foi contratado, ativado ou cobrado. Este guia explica o que acontece quando **você**
 > decidir publicar, quanto custa cada peça e em que momento a cobrança começa. Eu não crio contas,
 > não uso cartão e não ativo serviços pagos sem sua autorização expressa.
@@ -57,6 +59,7 @@ registrado por ação. Recomendo também configurar **alertas de gasto e limite 
 
    | Serviço | Variável | Valor |
    |---|---|---|
+   | api, worker e web | `RAILWAY_DOCKERFILE_PATH` | `apps/api/Dockerfile` (api e worker) ou `apps/web/Dockerfile` (web); deixe *Root Directory* vazio |
    | api e worker | `NODE_ENV` | `production` |
    | api e worker | `DATABASE_URL` | URL do PostgreSQL do Railway |
    | api e worker | `APP_SECRET` | texto aleatório de 32+ caracteres |
@@ -64,7 +67,9 @@ registrado por ação. Recomendo também configurar **alertas de gasto e limite 
    | api e worker | `STORAGE_DRIVER` | `s3` |
    | api e worker | `S3_ENDPOINT` | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
    | api e worker | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | do passo 1 |
-   | api | `ROLE` | `api` |
+   | api | `ROLE` | `api` (ou `all` na Etapa 1, sem worker separado) |
+   | api | `HOST`, `PORT` | `::` (aceita IPv4 e IPv6 na rede privada) e `3001` |
+   | web | `PORT` | `3000` |
    | worker | `ROLE` | `worker` |
    | api | `WEB_ORIGINS` | `https://SEU-SITE` (a origem pública do site) |
    | api | `TRUST_PROXY` | `true` (já é o padrão da imagem) |
@@ -74,15 +79,20 @@ registrado por ação. Recomendo também configurar **alertas de gasto e limite 
    defina o orçamento em *Configurações* e importe um áudio para validar o fluxo com o R2 real.
 5. Só depois, se quiser, aponte um domínio próprio.
 
-## 4. O que ainda NÃO foi validado (seja prudente no primeiro deploy)
+## 4. O que foi e o que ainda NÃO foi validado
 
-- As **imagens Docker não foram construídas** (o ambiente de desenvolvimento não tem Docker). Os passos
-  que elas executam foram reproduzidos manualmente (instalação só de produção, build, execução da API e
-  do site em modo `standalone`), mas o primeiro `docker build` real pode revelar ajustes.
-- O driver S3 foi testado contra um **S3 falso** (envio, leitura com Range, listagem, exclusão, URLs
-  assinadas). A **assinatura real e o CORS do R2** só se confirmam no primeiro teste com o bucket verdadeiro.
-- Railway e R2 **não foram testados**. O `docker-compose.yml` (PostgreSQL + MinIO + API + worker + site) é a
-  forma de ensaiar a nuvem no seu PC com Docker Desktop, mas também não foi executado aqui.
+**Validado de verdade (neste ambiente de desenvolvimento):**
+- As duas imagens Docker (`apps/api/Dockerfile` e `apps/web/Dockerfile`) **foram construídas e executadas**: a API sobe como usuário não-root,
+  fica *healthy*, aplica as migrações em um PostgreSQL 16 real, cria o administrador e recusa acesso sem login; o worker (`ROLE=worker`)
+  roda sem abrir porta HTTP; o site repassa `/api` à API. O teste de navegador completo (login, upload de 50 MB, reprodução com avanço,
+  download, orçamento, logout) passou **contra os contêineres**.
+- A API tolera ambientes **sem IPv6** (`HOST=::` cai para `0.0.0.0` com aviso).
+
+**Ainda não validado (só se confirma no primeiro deploy real):**
+- **Railway:** nunca foi usado por mim. Nomes de botões e variáveis (`RAILWAY_DOCKERFILE_PATH`, `${{Postgres.DATABASE_URL}}`,
+  `api.railway.internal`) vêm da documentação pública; o primeiro deploy pode pedir ajustes (por isso começamos por um staging barato).
+- **Cloudflare R2:** o driver S3 foi testado contra um S3 **falso**. A assinatura real e o CORS do R2 só se confirmam com o bucket verdadeiro (Etapa 2).
+- O `docker-compose.yml` (PostgreSQL + MinIO + API + worker + site) ainda não foi executado.
 - Backups: ative os backups automáticos do PostgreSQL no provedor e teste a restauração.
 
 ## 5. Operação

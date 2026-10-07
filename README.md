@@ -5,7 +5,7 @@ Tudo foi desenhado para rodar **online**, acessível pelo navegador de qualquer 
 
 Este repositório está na **Fase 3.5**: base, dashboard, canais, roteiros, áudios e a **fundação para a nuvem**
 (PostgreSQL, login, fila persistente, armazenamento S3/R2, orçamento). **Nada foi contratado nem publicado ainda.**
-Para colocar online, veja [`docs/DEPLOY.md`](docs/DEPLOY.md) (passo a passo e custos) e [`docs/CLOUD_ARCHITECTURE.md`](docs/CLOUD_ARCHITECTURE.md).
+Para colocar online, veja [`docs/STAGING.md`](docs/STAGING.md) (ambiente de teste, passo a passo, com parada de aprovação de custo), [`docs/DEPLOY.md`](docs/DEPLOY.md) (referência) e [`docs/CLOUD_ARCHITECTURE.md`](docs/CLOUD_ARCHITECTURE.md).
 
 ## Estado atual (honesto)
 

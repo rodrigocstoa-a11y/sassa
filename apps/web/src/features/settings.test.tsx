@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -43,8 +43,8 @@ describe('Configurações', () => {
     vi.mocked(api.budget).mockResolvedValue({ monthlyLimitUsd: 10, spentUsd: 2, remainingUsd: 8, periodStart: '' });
     render(<Settings />);
     const input = await screen.findByLabelText('Limite mensal (US$)');
-    await userEvent.clear(input);
-    await userEvent.type(input, '-5');
+    await waitFor(() => expect(input).toHaveValue(10)); // espera o valor carregado do servidor
+    fireEvent.change(input, { target: { value: '-5' } }); // direto: digitar "-" num campo numérico depende do jsdom
     await userEvent.click(screen.getByRole('button', { name: 'Salvar limite' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('igual ou maior que zero');
     expect(api.setBudget).not.toHaveBeenCalled();

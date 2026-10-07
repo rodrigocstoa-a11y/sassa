@@ -20,6 +20,8 @@ COPY apps/api/package.json apps/api/
 RUN npm ci --omit=dev --workspace=@rrn/shared --workspace=@rrn/api --include-workspace-root && npm cache clean --force
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/apps/api/dist apps/api/dist
+# Pastas graváveis pelo usuário não-root (disco local de teste; em produção os arquivos vão para o S3/R2)
+RUN mkdir -p /app/storage /app/data && chown -R node:node /app/storage /app/data
 USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
