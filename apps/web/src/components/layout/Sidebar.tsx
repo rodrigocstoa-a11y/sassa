@@ -20,7 +20,7 @@ export function isActive(pathname: string, path: string) {
   return path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export function Sidebar() {
+export function Sidebar({ user, onLogout }: { user?: { email: string } | null; onLogout?: () => void }) {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface px-4 py-6">
@@ -49,7 +49,14 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <p className="px-2 text-[11px] text-muted">v0.1.0 · modo local</p>
+      {user ? (
+        <div className="border-t border-border px-2 pt-3">
+          <p className="truncate text-xs text-muted" title={user.email}>{user.email}</p>
+          <button onClick={onLogout} className="mt-1 cursor-pointer text-xs text-brand-2 hover:underline">Sair</button>
+        </div>
+      ) : (
+        <p className="px-2 text-[11px] text-muted">v0.2.0 · modo local</p>
+      )}
     </aside>
   );
 }

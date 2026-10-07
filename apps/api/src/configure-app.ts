@@ -8,9 +8,11 @@ export function allowedWebOrigins(): string[] {
 /** Configuração comum à aplicação real e aos testes. */
 export function configureApp(app: NestExpressApplication) {
   app.setGlobalPrefix('api');
+  // Atrás de proxy (Railway, Fly, Cloudflare): usa o IP real do cliente (limite de tentativas de login).
+  if (process.env.TRUST_PROXY === 'true') app.set('trust proxy', 1);
   // Roteiros longos: o limite padrão de 100 KB não serve. O schema limita o conteúdo a 1.000.000 de caracteres.
   app.useBodyParser('json', { limit: '8mb' });
-  // O proxy do Next trunca corpos acima de 10 MB; por isso o envio de áudio vai direto do navegador à API.
+  // Arquivos grandes não passam pela API nem pelo proxy do Next: vão direto ao armazenamento por URL assinada.
   // CORS restrito às origens do painel (nunca '*').
-  app.enableCors({ origin: allowedWebOrigins(), methods: ['GET', 'POST', 'PUT', 'DELETE'], maxAge: 600 });
+  app.enableCors({ origin: allowedWebOrigins(), methods: ['GET', 'POST', 'PUT', 'DELETE'], credentials: true, maxAge: 600 });
 }

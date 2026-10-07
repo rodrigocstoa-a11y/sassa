@@ -1,4 +1,10 @@
-# RRN Studio AI: arquitetura 100% online (proposta para aprovação)
+# RRN Studio AI: arquitetura 100% online
+
+> **Atualização (Fase 3.5 implementada):** a fundação em nuvem já existe no código (PostgreSQL, login, fila
+> persistente, armazenamento S3/R2 com envio direto, orçamento e confirmação de custos, Dockerfiles, CI).
+> Nada foi contratado. Veja [DEPLOY.md](DEPLOY.md) para o passo a passo, custos e o que ainda não foi validado.
+> Decisão registrada: o banco de testes local é **PGlite** (Postgres embutido) e a fila é própria, sobre o
+> PostgreSQL (sem pg-boss nem Redis).
 
 > Status: **proposta**. Nada foi contratado, ativado ou implementado. Os preços foram levantados em
 > pesquisa na web em outubro/2026, em parte por sites agregadores, e **precisam ser conferidos nas

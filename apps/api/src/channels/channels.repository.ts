@@ -3,11 +3,11 @@ import type { Channel, ChannelInput } from '@rrn/shared';
 /** Lançado quando o canal ainda possui roteiros vinculados. */
 export class ChannelInUseError extends Error {}
 
-/** Contrato de persistência. SQLite hoje; PostgreSQL pode entrar na nuvem sem mudar o resto. */
+/** Contrato de persistência de canais (implementação em PostgreSQL). */
 export abstract class ChannelsRepository {
-  abstract list(ownerId: string): Channel[];
-  abstract find(ownerId: string, id: string): Channel | undefined;
-  abstract create(ownerId: string, input: ChannelInput): Channel;
-  abstract update(ownerId: string, id: string, input: ChannelInput): Channel | undefined;
-  abstract remove(ownerId: string, id: string): boolean;
+  abstract list(ownerId: string): Promise<Channel[]>;
+  abstract find(ownerId: string, id: string): Promise<Channel | undefined>;
+  abstract create(ownerId: string, input: ChannelInput): Promise<Channel>;
+  abstract update(ownerId: string, id: string, input: ChannelInput): Promise<Channel | undefined>;
+  abstract remove(ownerId: string, id: string): Promise<boolean>;
 }

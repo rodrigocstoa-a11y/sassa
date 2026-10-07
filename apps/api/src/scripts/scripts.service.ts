@@ -4,10 +4,12 @@ import {
   normalizeForSearch,
   type ScriptDetail,
   type ScriptInput,
+  type ScriptList,
   type ScriptListQuery,
   type ScriptTranslationInput,
 } from '@rrn/shared';
-import { ChannelsService, LOCAL_OWNER } from '../channels/channels.service';
+import { OwnerContext } from '../auth/owner-context';
+import { ChannelsService } from '../channels/channels.service';
 import { ScriptsRepository, type ScriptWrite } from './scripts.repository';
 
 const invalid = (path: string, message: string) =>
@@ -18,38 +20,41 @@ export class ScriptsService {
   constructor(
     private readonly repo: ScriptsRepository,
     private readonly channels: ChannelsService,
+    private readonly owner: OwnerContext,
   ) {}
 
-  list(query: ScriptListQuery) {
-    return this.repo.list(LOCAL_OWNER, query);
+  list(query: ScriptListQuery): Promise<ScriptList> {
+    return this.repo.list(this.owner.current(), query);
   }
 
   count() {
-    return this.repo.count(LOCAL_OWNER);
+    return this.repo.count(this.owner.current());
   }
 
-  get(id: string): ScriptDetail {
-    const script = this.repo.find(LOCAL_OWNER, id);
+  async get(id: string): Promise<ScriptDetail> {
+    const ownerId = this.owner.current();
+    const script = await this.repo.find(ownerId, id);
     if (!script) throw new NotFoundException('Roteiro não encontrado');
-    const source = script.sourceScriptId ? this.repo.find(LOCAL_OWNER, script.sourceScriptId) : undefined;
+    const source = script.sourceScriptId ? await this.repo.find(ownerId, script.sourceScriptId) : undefined;
     const { content: _c, ...sourceSummary } = source ?? ({} as NonNullable<typeof source>);
     return {
       ...script,
       source: source ? sourceSummary : null,
-      translations: script.sourceScriptId ? [] : this.repo.translationsOf(LOCAL_OWNER, id),
+      translations: script.sourceScriptId ? [] : await this.repo.translationsOf(ownerId, id),
       outdated: !!source && source.updatedAt > script.updatedAt,
     };
   }
 
-  create(input: ScriptInput): ScriptDetail {
-    this.assertChannel(input.channelId);
-    const created = this.repo.create(LOCAL_OWNER, { ...this.toWrite(input, null), sourceScriptId: null });
+  async create(input: ScriptInput): Promise<ScriptDetail> {
+    await this.assertChannel(input.channelId);
+    const created = await this.repo.create(this.owner.current(), { ...this.toWrite(input, null), sourceScriptId: null });
     return this.get(created.id);
   }
 
-  update(id: string, input: ScriptInput): ScriptDetail {
-    const existing = this.get(id);
-    if (input.channelId !== existing.channelId) this.assertChannel(input.channelId);
+  async update(id: string, input: ScriptInput): Promise<ScriptDetail> {
+    const ownerId = this.owner.current();
+    const existing = await this.get(id);
+    if (input.channelId !== existing.channelId) await this.assertChannel(input.channelId);
 
     if (existing.sourceScriptId) {
       if (input.channelId !== existing.channelId) throw invalid('channelId', 'Uma tradução mantém o canal do roteiro original');
@@ -62,36 +67,37 @@ export class ScriptsService {
     }
     if (
       (input.channelId !== existing.channelId || input.language !== existing.language) &&
-      this.repo.countAudios(LOCAL_OWNER, id) > 0
+      (await this.repo.countAudios(ownerId, id)) > 0
     ) {
       throw new ConflictException('Este roteiro tem áudios vinculados: não é possível mudar o canal ou o idioma.');
     }
 
     const approvedAt = input.status === 'approved' ? (existing.approvedAt ?? new Date().toISOString()) : null;
-    this.repo.update(LOCAL_OWNER, id, this.toWrite(input, approvedAt));
+    await this.repo.update(ownerId, id, this.toWrite(input, approvedAt));
     return this.get(id);
   }
 
-  remove(id: string) {
-    const existing = this.get(id);
+  async remove(id: string) {
+    const ownerId = this.owner.current();
+    const existing = await this.get(id);
     if (existing.translations.length > 0) {
       throw new ConflictException('Este roteiro tem traduções vinculadas. Exclua as traduções antes de excluir o original.');
     }
-    if (this.repo.countAudios(LOCAL_OWNER, id) > 0) {
+    if ((await this.repo.countAudios(ownerId, id)) > 0) {
       throw new ConflictException('Este roteiro possui áudios vinculados. Exclua os áudios antes de excluir o roteiro.');
     }
-    this.repo.remove(LOCAL_OWNER, id);
+    await this.repo.remove(ownerId, id);
   }
 
   /** Cria uma tradução vazia (rascunho) vinculada ao original. O texto traduzido é colado/escrito depois. */
-  createTranslation(sourceId: string, { language }: ScriptTranslationInput): ScriptDetail {
-    const source = this.get(sourceId);
+  async createTranslation(sourceId: string, { language }: ScriptTranslationInput): Promise<ScriptDetail> {
+    const source = await this.get(sourceId);
     if (source.sourceScriptId) throw new BadRequestException('Só é possível traduzir o roteiro original, não uma tradução.');
     if (language === source.language) throw invalid('language', 'A tradução deve estar em um idioma diferente do original');
     if (source.translations.some((t) => t.language === language)) {
       throw new ConflictException('Já existe uma tradução neste idioma para este roteiro.');
     }
-    const created = this.repo.create(LOCAL_OWNER, {
+    const created = await this.repo.create(this.owner.current(), {
       ...this.toWrite(
         { channelId: source.channelId, title: source.title, language, topic: source.topic, content: '', status: 'draft' },
         null,
@@ -101,9 +107,9 @@ export class ScriptsService {
     return this.get(created.id);
   }
 
-  private assertChannel(channelId: string) {
+  private async assertChannel(channelId: string) {
     try {
-      this.channels.get(channelId);
+      await this.channels.get(channelId);
     } catch {
       throw invalid('channelId', 'Canal não encontrado');
     }

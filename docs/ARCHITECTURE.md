@@ -1,6 +1,6 @@
 # Arquitetura (resumo aprovado)
 
-> **ATUALIZAÇÃO (proposta pendente de aprovação):** o requisito agora é uma plataforma 100% online.
+> **ATUALIZAÇÃO (requisito confirmado):** o requisito agora é uma plataforma 100% online.
 > O agente local do Windows e qualquer renderização/IA no PC foram **descartados**. Veja
 > [CLOUD_ARCHITECTURE.md](CLOUD_ARCHITECTURE.md). As seções abaixo sobre agente local e render local estão superadas.
 
@@ -16,4 +16,4 @@ Pipeline: Canal → Roteiro → Áudio → Imagens/Thumbnail → Montagem → Re
 - **Segredos**: somente no servidor; nunca no frontend.
 - **Provedores**: interfaces em `packages/shared/src/providers.ts`; cada integração é um adaptador novo.
 
-Fases: 0-1 base e canais (feito) · 2 roteiros (feito) · 3 áudio (feito) · 4 imagens · 5 fila · 6 agente · 7 editor/render · 8 YouTube.
+Fases: 0-1 base e canais (feito) · 2 roteiros (feito) · 3 áudio (feito) · 3.5 fundação em nuvem (feito, não contratada) · 4 imagens · 5 fila · 6 agente · 7 editor/render · 8 YouTube.

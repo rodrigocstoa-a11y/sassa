@@ -20,6 +20,8 @@ export interface TtsSynthesisResult {
   data: Uint8Array;
   mimeType: string;
   durationMs?: number;
+  /** Custo real informado pelo provedor, quando disponível (senão vale a estimativa). */
+  costUsd?: number;
 }
 
 export interface TtsProvider {
@@ -28,6 +30,8 @@ export interface TtsProvider {
   /** Limite de caracteres por requisição do provedor; define como o roteiro é dividido. */
   readonly maxCharsPerRequest: number;
   listVoices(language?: string): Promise<Voice[]>;
+  /** Estimativa OBRIGATÓRIA do custo (US$) de sintetizar `text`. Sustenta a confirmação e o orçamento. */
+  estimateCostUsd(req: { text: string; voiceId: string; language: string }): number;
   synthesize(req: { text: string; voiceId: string; language: string; speed?: number }): Promise<TtsSynthesisResult>;
 }
 
@@ -46,5 +50,5 @@ export interface ProviderSlot {
 export const PROVIDER_SLOTS: readonly Omit<ProviderSlot, 'configured'>[] = [
   { kind: 'llm', label: 'Geração de roteiros (LLM)', note: 'Interface pronta (Fase 2). Nenhum provedor conectado; a geração automática está desativada.' },
   { kind: 'tts', label: 'Narração (TTS)', note: 'Interface pronta (Fase 3). Nenhum provedor conectado; Talkify Labs aguarda a documentação da API.' },
-  { kind: 'image', label: 'Geração de imagens', note: 'Fase 4. Opção local (ex.: Stable Diffusion) a avaliar para 6 GB de VRAM.' },
+  { kind: 'image', label: 'Geração de imagens', note: 'Fase 4. Provedor online (a definir). Nada é gerado no seu computador.' },
 ];

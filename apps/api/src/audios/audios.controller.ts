@@ -1,18 +1,24 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { z } from 'zod';
 import {
   audioGenerationRequestSchema,
   audioListQuerySchema,
   audioUpdateSchema,
-  audioUploadQuerySchema,
+  audioUploadCompleteSchema,
+  audioUploadInitSchema,
   type AudioGenerationRequest,
   type AudioListQuery,
   type AudioUpdateInput,
-  type AudioUploadQuery,
+  type AudioUploadComplete,
+  type AudioUploadInit,
 } from '@rrn/shared';
 import { ZodValidationPipe } from '../zod-validation.pipe';
 import { AudioGenerationService } from './audio-generation.service';
 import { AudiosService } from './audios.service';
+
+const estimateSchema = z.object({ scriptId: z.string().min(1), voiceId: z.string().min(1) });
+const retrySchema = z.object({ approvedMaxCostUsd: z.number().min(0).optional() }).default({});
 
 @Controller('audios')
 export class AudiosController {
@@ -36,11 +42,22 @@ export class AudiosController {
     return this.generation.voices(language);
   }
 
-  /** O corpo da requisição é o arquivo de áudio (Content-Type audio/*); metadados vão na query. */
-  @Post('upload')
-  upload(@Query(new ZodValidationPipe(audioUploadQuerySchema)) query: AudioUploadQuery, @Req() req: Request) {
-    const length = req.headers['content-length'];
-    return this.audios.importUpload(query, req, length ? Number(length) : undefined);
+  /** Envio em 2 etapas: (1) pede uma URL assinada, (2) o navegador envia o arquivo e a API confere e cadastra. */
+  @Post('uploads')
+  initUpload(@Body(new ZodValidationPipe(audioUploadInitSchema)) body: AudioUploadInit) {
+    return this.audios.initUpload(body);
+  }
+
+  @Post('uploads/complete')
+  @HttpCode(201)
+  completeUpload(@Body(new ZodValidationPipe(audioUploadCompleteSchema)) body: AudioUploadComplete) {
+    return this.audios.completeUpload(body.uploadToken);
+  }
+
+  @Post('generation/estimate')
+  @HttpCode(200)
+  estimate(@Body(new ZodValidationPipe(estimateSchema)) body: { scriptId: string; voiceId: string }) {
+    return this.generation.estimate(body.scriptId, body.voiceId);
   }
 
   /** Sem provedor TTS responde 501; nunca cria um áudio simulado. */
@@ -55,15 +72,20 @@ export class AudiosController {
     return this.audios.get(id);
   }
 
-  /** Streaming com suporte a Range (permite pausar/avançar no player). `?download=1` força o download. */
+  /** Arquivo de áudio: redirecionamento assinado (S3/R2) ou streaming local com Range. `?download=1` baixa. */
   @Get(':id/file')
   async file(@Param('id') id: string, @Query('download') download: string | undefined, @Res() res: Response) {
-    const file = this.audios.fileFor(id);
-    res.setHeader('Content-Type', file.mimeType);
+    const file = await this.audios.fileFor(id, !!download);
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (file.target.kind === 'redirect') {
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.redirect(302, file.target.url);
+      return;
+    }
+    res.setHeader('Content-Type', file.mimeType);
     if (download) res.attachment(file.downloadName);
     await new Promise<void>((done) => {
-      res.sendFile(file.path, { dotfiles: 'allow', acceptRanges: true }, (err) => {
+      res.sendFile((file.target as { path: string }).path, { dotfiles: 'allow', acceptRanges: true }, (err) => {
         if (err && !res.headersSent) res.status(404).json({ message: 'Arquivo de áudio não encontrado no armazenamento' });
         done();
       });
@@ -77,8 +99,8 @@ export class AudiosController {
 
   @Post(':id/retry')
   @HttpCode(202)
-  retry(@Param('id') id: string) {
-    return this.generation.retry(id);
+  retry(@Param('id') id: string, @Body(new ZodValidationPipe(retrySchema)) body: { approvedMaxCostUsd?: number }) {
+    return this.generation.retry(id, body.approvedMaxCostUsd);
   }
 
   @Delete(':id')

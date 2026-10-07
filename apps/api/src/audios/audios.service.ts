@@ -1,13 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { Readable } from 'node:stream';
 import {
   AUDIO_FORMATS,
   normalizeForSearch,
@@ -15,13 +15,15 @@ import {
   type AudioListQuery,
   type AudioSummary,
   type AudioUpdateInput,
-  type AudioUploadQuery,
+  type AudioUploadInit,
+  type AudioUploadTarget,
 } from '@rrn/shared';
 import { audioMaxBytes } from '../config';
-import { LOCAL_OWNER } from '../channels/channels.service';
+import { OwnerContext } from '../auth/owner-context';
 import { ScriptsService } from '../scripts/scripts.service';
+import { ObjectStorage, type ReadTarget } from '../storage/object-storage';
+import { signTicket, verifyTicket } from '../storage/tickets';
 import { extForMime, mimeFor, sniffAudioFormat } from './audio-format';
-import { AudioStorage } from './audio-storage';
 import { AudiosRepository, type AudioRecord } from './audios.repository';
 
 const invalid = (path: string, message: string) =>
@@ -29,8 +31,20 @@ const invalid = (path: string, message: string) =>
 
 const toSummary = ({ fileKey: _k, ...summary }: AudioRecord): AudioSummary => summary;
 
+const UPLOAD_TTL_SEC = 3600;
+
+interface UploadTicket {
+  o: string; // dono
+  k: string; // chave no armazenamento
+  s: string; // roteiro
+  t: string; // título
+  f?: string; // nome original
+  d?: number; // duração informada pelo navegador
+  z: number; // tamanho declarado
+}
+
 export interface AudioFile {
-  path: string;
+  target: ReadTarget;
   mimeType: string;
   downloadName: string;
 }
@@ -39,20 +53,19 @@ export interface AudioFile {
 export class AudiosService {
   constructor(
     private readonly repo: AudiosRepository,
-    private readonly storage: AudioStorage,
+    @Inject(ObjectStorage) private readonly storage: ObjectStorage,
     private readonly scripts: ScriptsService,
+    private readonly owner: OwnerContext,
   ) {}
 
   /** A pesquisa de texto é feita aqui (sem acentos/caixa); os demais filtros e a ordenação, no banco. */
-  list(query: AudioListQuery): AudioList {
+  async list(query: AudioListQuery): Promise<AudioList> {
     const { q, limit, offset, ...filters } = query;
-    let rows = this.repo.list(LOCAL_OWNER, filters);
+    let rows = await this.repo.list(this.owner.current(), filters);
     const terms = normalizeForSearch(q ?? '').split(/\s+/).filter(Boolean);
     if (terms.length) {
       rows = rows.filter((a) => {
-        const hay = normalizeForSearch(
-          [a.title, a.scriptTitle, a.channelName, a.originalFilename, a.voiceName].filter(Boolean).join('\n'),
-        );
+        const hay = normalizeForSearch([a.title, a.scriptTitle, a.channelName, a.originalFilename, a.voiceName].filter(Boolean).join('\n'));
         return terms.every((t) => hay.includes(t));
       });
     }
@@ -60,86 +73,107 @@ export class AudiosService {
   }
 
   count() {
-    return this.repo.count(LOCAL_OWNER);
+    return this.repo.count(this.owner.current());
   }
 
-  record(id: string): AudioRecord {
-    const rec = this.repo.find(LOCAL_OWNER, id);
+  async record(id: string): Promise<AudioRecord> {
+    const rec = await this.repo.find(this.owner.current(), id);
     if (!rec) throw new NotFoundException('Áudio não encontrado');
     return rec;
   }
 
-  get(id: string): AudioSummary {
-    return toSummary(this.record(id));
+  async get(id: string): Promise<AudioSummary> {
+    return toSummary(await this.record(id));
   }
 
-  /** Importa um arquivo de áudio produzido fora da plataforma. O corpo da requisição é o arquivo. */
-  async importUpload(q: AudioUploadQuery, body: Readable, contentLength: number | undefined): Promise<AudioSummary> {
-    const script = this.getScript(q.scriptId);
+  /** Etapa 1: valida o pedido e devolve uma URL assinada para o navegador enviar o arquivo direto ao armazenamento. */
+  async initUpload(input: AudioUploadInit): Promise<AudioUploadTarget> {
+    const script = await this.getScript(input.scriptId);
     const max = audioMaxBytes();
-    if (contentLength !== undefined && contentLength > max) {
-      throw new PayloadTooLargeException(`Arquivo maior que o limite de ${Math.floor(max / 1024 / 1024)} MB`);
-    }
+    if (input.size > max) throw new PayloadTooLargeException(`Arquivo maior que o limite de ${Math.floor(max / 1024 / 1024)} MB`);
+    const ownerId = this.owner.current();
+    const key = `audio/${ownerId}/${randomUUID()}`;
+    const contentType = input.contentType || 'application/octet-stream';
+    const target = await this.storage.createUploadTarget(key, { contentType, expiresInSec: UPLOAD_TTL_SEC, maxBytes: input.size });
+    const uploadToken = signTicket<UploadTicket>(
+      { o: ownerId, k: key, s: script.id, t: input.title, f: input.filename, d: input.durationMs, z: input.size },
+      UPLOAD_TTL_SEC,
+    );
+    return { uploadUrl: target.url, method: target.method, headers: target.headers, uploadToken, expiresInSec: UPLOAD_TTL_SEC };
+  }
 
-    const temp = await this.storage.writeTemp(body, max);
-    const ext = temp.size > 0 ? sniffAudioFormat(temp.head) : null;
+  /** Etapa 2: confere o arquivo enviado (existência, tamanho e formato pelos bytes) e cria o registro. */
+  async completeUpload(uploadToken: string): Promise<AudioSummary> {
+    const ownerId = this.owner.current();
+    const t = verifyTicket<UploadTicket>(uploadToken);
+    if (!t || t.o !== ownerId) throw new BadRequestException('Token de envio inválido ou expirado');
+
+    const existing = await this.repo.findByFileKey(ownerId, t.k); // idempotente
+    if (existing) return toSummary(existing);
+
+    const script = await this.getScript(t.s);
+    const head = await this.storage.head(t.k);
+    if (!head) throw new BadRequestException('O arquivo ainda não foi enviado');
+    if (head.size !== t.z || head.size > audioMaxBytes()) {
+      await this.storage.delete(t.k);
+      throw new BadRequestException('O tamanho do arquivo enviado não confere com o informado');
+    }
+    const ext = sniffAudioFormat(await this.storage.readRange(t.k, 0, 15));
     if (!ext) {
-      await this.storage.discard(temp.tempKey);
-      if (temp.size === 0) throw new BadRequestException('Arquivo vazio');
-      throw new UnsupportedMediaTypeException(
-        `Formato de áudio não reconhecido. Formatos aceitos: ${AUDIO_FORMATS.map((f) => f.label).join(', ')}.`,
-      );
+      await this.storage.delete(t.k);
+      throw new UnsupportedMediaTypeException(`Formato de áudio não reconhecido. Formatos aceitos: ${AUDIO_FORMATS.map((f) => f.label).join(', ')}.`);
     }
-
-    const fileKey = `audio/${LOCAL_OWNER}/${randomUUID()}.${ext}`;
-    await this.storage.commit(temp.tempKey, fileKey);
     try {
-      const rec = this.repo.create(LOCAL_OWNER, {
-        channelId: script.channelId,
-        scriptId: script.id,
-        title: q.title,
-        language: script.language,
-        status: 'completed',
-        source: 'upload',
-        fileKey,
-        mimeType: mimeFor(ext),
-        sizeBytes: temp.size,
-        durationMs: q.durationMs ?? null,
-        originalFilename: q.filename ?? null,
-      });
-      return toSummary(rec);
+      return toSummary(
+        await this.repo.create(ownerId, {
+          channelId: script.channelId,
+          scriptId: script.id,
+          title: t.t,
+          language: script.language,
+          status: 'completed',
+          source: 'upload',
+          fileKey: t.k,
+          mimeType: mimeFor(ext),
+          sizeBytes: head.size,
+          durationMs: t.d ?? null,
+          originalFilename: t.f ?? null,
+        }),
+      );
     } catch (err) {
-      await this.storage.delete(fileKey);
+      await this.storage.delete(t.k);
       throw err;
     }
   }
 
-  update(id: string, input: AudioUpdateInput): AudioSummary {
-    const rec = this.record(id);
+  async update(id: string, input: AudioUpdateInput): Promise<AudioSummary> {
+    const rec = await this.record(id);
     if (input.approved && rec.status !== 'completed') throw invalid('approved', 'Só é possível aprovar um áudio concluído');
     const approvedAt = input.approved ? (rec.approvedAt ?? new Date().toISOString()) : null;
-    return toSummary(this.repo.update(LOCAL_OWNER, id, { title: input.title, approvedAt })!);
+    return toSummary((await this.repo.update(this.owner.current(), id, { title: input.title, approvedAt }))!);
   }
 
   async remove(id: string) {
-    const rec = this.record(id);
+    const rec = await this.record(id);
     if (rec.status === 'processing') throw new ConflictException('Este áudio está sendo processado. Aguarde o término para excluir.');
-    this.repo.remove(LOCAL_OWNER, id);
+    await this.repo.remove(this.owner.current(), id);
     if (rec.fileKey) await this.storage.delete(rec.fileKey);
-    await this.storage.delete(`audio/${LOCAL_OWNER}/${id}`); // partes de narrações geradas
+    await this.storage.deletePrefix(`audio/${rec.ownerId}/${id}/`); // partes de narrações geradas
   }
 
-  fileFor(id: string): AudioFile {
-    const rec = this.record(id);
+  async fileFor(id: string, download: boolean): Promise<AudioFile> {
+    const rec = await this.record(id);
     if (!rec.hasFile || !rec.fileKey) throw new NotFoundException('Este áudio não possui arquivo disponível');
-    const ext = extForMime(rec.mimeType ?? '') ?? 'bin';
+    const mimeType = rec.mimeType ?? 'application/octet-stream';
+    const ext = extForMime(mimeType) ?? 'bin';
     const safe = rec.title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'audio';
-    return { path: this.storage.resolve(rec.fileKey), mimeType: rec.mimeType ?? 'application/octet-stream', downloadName: `${safe}.${ext}` };
+    const downloadName = `${safe}.${ext}`;
+    const target = await this.storage.createReadTarget(rec.fileKey, { contentType: mimeType, downloadName: download ? downloadName : undefined, expiresInSec: 900 });
+    return { target, mimeType, downloadName };
   }
 
-  private getScript(scriptId: string) {
+  private async getScript(scriptId: string) {
     try {
-      return this.scripts.get(scriptId);
+      return await this.scripts.get(scriptId);
     } catch {
       throw invalid('scriptId', 'Roteiro não encontrado');
     }

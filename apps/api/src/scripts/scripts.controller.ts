@@ -53,8 +53,8 @@ export class ScriptsController {
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id') id: string) {
-    this.scripts.remove(id);
+  async remove(@Param('id') id: string) {
+    await this.scripts.remove(id);
   }
 
   @Post(':id/translations')

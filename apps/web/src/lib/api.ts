@@ -1,5 +1,9 @@
 import type {
+  AudioCostEstimate,
   AudioGenerationRequest,
+  AudioUploadTarget,
+  BudgetStatus,
+  CostEvent,
   AudioGenerationStatus,
   AudioList,
   AudioListQuery,
@@ -33,6 +37,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new ApiError('Não foi possível conectar à API. Ela está em execução?', 0);
+  }
+  if (res.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
+    // Sessão ausente ou expirada: volta para o login e depois para a página atual.
+    if (window.location.pathname !== '/login') window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+    throw new ApiError('Sessão expirada. Faça login novamente.', 401);
   }
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -78,46 +87,68 @@ export const api = {
   updateAudio: (id: string, input: AudioUpdateInput) =>
     request<AudioSummary>(`/audios/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteAudio: (id: string) => request<void>(`/audios/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  retryAudio: (id: string) => request<AudioSummary>(`/audios/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
+  retryAudio: (id: string) => request<AudioSummary>(`/audios/${encodeURIComponent(id)}/retry`, { method: 'POST', body: '{}' }),
+  audioEstimate: (scriptId: string, voiceId: string) =>
+    request<AudioCostEstimate>('/audios/generation/estimate', { method: 'POST', body: JSON.stringify({ scriptId, voiceId }) }),
   generateAudio: (input: AudioGenerationRequest) =>
     request<AudioSummary>('/audios/generate', { method: 'POST', body: JSON.stringify(input) }),
   audioGenerationStatus: () => request<AudioGenerationStatus>('/audios/generation/status'),
   audioVoices: (language?: string) => request<AudioVoicesResponse>(`/audios/voices${language ? `?language=${encodeURIComponent(language)}` : ''}`),
   summary: () => request<DashboardSummary>('/dashboard/summary'),
-  health: () => request<{ status: string; database: string; version: string }>('/health'),
+  health: () =>
+    request<{ status: string; database: string; version: string; engine: string; storage: string; authRequired: boolean; role: string }>('/health'),
+  me: () => request<{ authRequired: boolean; user: { email: string; role: string } | null }>('/auth/me'),
+  login: (email: string, password: string) =>
+    request<{ user: { email: string; role: string } }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }),
+  budget: () => request<BudgetStatus>('/budget'),
+  setBudget: (monthlyLimitUsd: number | null) => request<BudgetStatus>('/budget', { method: 'PUT', body: JSON.stringify({ monthlyLimitUsd }) }),
+  budgetEvents: () => request<CostEvent[]>('/budget/events'),
   providers: () => request<ProviderSlot[]>('/providers'),
 };
 
 export const audioFileUrl = (id: string, download = false) =>
   `/api/audios/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`;
 
-/**
- * O proxy do Next (rewrites) trunca corpos acima de 10 MB, então o envio de arquivos grandes
- * vai direto à API. URL pública e não secreta; a API só aceita a origem do painel (CORS).
- */
-const DIRECT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://127.0.0.1:3001';
+/** Envia o arquivo por XHR direto para a URL assinada (S3/R2 na nuvem), com progresso. */
+function putFile(target: AudioUploadTarget, file: File, onProgress: (fraction: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(target.method, target.uploadUrl);
+    for (const [k, v] of Object.entries(target.headers)) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onerror = () => reject(new ApiError('Falha de rede no envio do arquivo.', 0));
+    xhr.onabort = () => reject(new ApiError('Envio cancelado', 0));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      let message = `O armazenamento recusou o arquivo (HTTP ${xhr.status}).`;
+      try { message = JSON.parse(xhr.responseText).message ?? message; } catch { /* resposta não-JSON (XML do S3) */ }
+      reject(new ApiError(message, xhr.status));
+    };
+    xhr.send(file);
+  });
+}
 
-/** Envia o arquivo como corpo bruto (sem multipart), com progresso. XHR porque fetch não reporta progresso de envio. */
-export function uploadAudio(
+/**
+ * Envio em 2 etapas: (1) a API valida e devolve uma URL assinada, (2) o arquivo vai DIRETO ao armazenamento
+ * (sem passar pela API nem pelo proxy do Next), (3) a API confere o arquivo e cadastra o áudio.
+ */
+export async function uploadAudio(
   file: File,
   meta: { scriptId: string; title: string; durationMs?: number },
   onProgress: (fraction: number) => void,
 ): Promise<AudioSummary> {
-  return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({ scriptId: meta.scriptId, title: meta.title, filename: file.name });
-    if (meta.durationMs !== undefined) params.set('durationMs', String(Math.round(meta.durationMs)));
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${DIRECT_API_URL}/api/audios/upload?${params}`);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onerror = () => reject(new ApiError('Não foi possível conectar à API. Ela está em execução?', 0));
-    xhr.onabort = () => reject(new ApiError('Envio cancelado', 0));
-    xhr.onload = () => {
-      let data: { message?: string; issues?: { path: string; message: string }[] } & Partial<AudioSummary> = {};
-      try { data = JSON.parse(xhr.responseText); } catch { /* resposta não-JSON */ }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data as AudioSummary);
-      else reject(new ApiError(data.message ?? `Erro ${xhr.status}`, xhr.status, data.issues ?? []));
-    };
-    xhr.send(file);
+  const target = await request<AudioUploadTarget>('/audios/uploads', {
+    method: 'POST',
+    body: JSON.stringify({
+      scriptId: meta.scriptId,
+      title: meta.title,
+      filename: file.name,
+      durationMs: meta.durationMs !== undefined ? Math.round(meta.durationMs) : undefined,
+      contentType: file.type || 'application/octet-stream',
+      size: file.size,
+    }),
   });
+  await putFile(target, file, onProgress);
+  return request<AudioSummary>('/audios/uploads/complete', { method: 'POST', body: JSON.stringify({ uploadToken: target.uploadToken }) });
 }

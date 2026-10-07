@@ -6,15 +6,15 @@ export interface ScriptWrite extends ScriptInput {
   approvedAt: string | null;
 }
 
-/** Contrato de persistência de roteiros (SQLite hoje; PostgreSQL no futuro). */
+/** Contrato de persistência de roteiros (implementação em PostgreSQL). */
 export abstract class ScriptsRepository {
-  abstract list(ownerId: string, query: ScriptListQuery): { items: ScriptSummary[]; total: number };
-  abstract find(ownerId: string, id: string): Script | undefined;
-  abstract translationsOf(ownerId: string, sourceId: string): ScriptSummary[];
-  abstract create(ownerId: string, data: ScriptWrite & { sourceScriptId: string | null }): Script;
-  abstract update(ownerId: string, id: string, data: ScriptWrite): Script | undefined;
-  abstract remove(ownerId: string, id: string): boolean;
-  abstract countByChannel(ownerId: string, channelId: string): number;
-  abstract count(ownerId: string): number;
-  abstract countAudios(ownerId: string, scriptId: string): number;
+  abstract list(ownerId: string, query: ScriptListQuery): Promise<{ items: ScriptSummary[]; total: number }>;
+  abstract find(ownerId: string, id: string): Promise<Script | undefined>;
+  abstract translationsOf(ownerId: string, sourceId: string): Promise<ScriptSummary[]>;
+  abstract create(ownerId: string, data: ScriptWrite & { sourceScriptId: string | null }): Promise<Script>;
+  abstract update(ownerId: string, id: string, data: ScriptWrite): Promise<Script | undefined>;
+  abstract remove(ownerId: string, id: string): Promise<boolean>;
+  abstract countByChannel(ownerId: string, channelId: string): Promise<number>;
+  abstract count(ownerId: string): Promise<number>;
+  abstract countAudios(ownerId: string, scriptId: string): Promise<number>;
 }

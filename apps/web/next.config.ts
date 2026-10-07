@@ -1,12 +1,12 @@
+import { join } from 'node:path';
 import type { NextConfig } from 'next';
 
-// A API fica em loopback; o navegador só fala com o Next (sem CORS e sem expor a porta da API).
-const API_URL = process.env.API_URL ?? 'http://127.0.0.1:3001';
-
+// A ponte /api/* → API fica em src/app/api/[...path]/route.ts e lê API_URL em tempo de execução.
 const config: NextConfig = {
-  async rewrites() {
-    return [{ source: '/api/:path*', destination: `${API_URL}/api/:path*` }];
-  },
+  // Docker: gera uma pasta autocontida (.next/standalone) para uma imagem pequena.
+  output: process.env.NEXT_OUTPUT === 'standalone' ? 'standalone' : undefined,
+  outputFileTracingRoot: join(__dirname, '../../'),
+  poweredByHeader: false,
 };
 
 export default config;

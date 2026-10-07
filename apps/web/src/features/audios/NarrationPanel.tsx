@@ -7,10 +7,12 @@ import {
   type ScriptDetail,
 } from '@rrn/shared';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, ErrorBanner, Field, Input, Select } from '@/components/ui';
 import { api } from '@/lib/api';
 import { formatMinutes, formatNumber } from '@/lib/format';
+import type { AudioCostEstimate } from '@rrn/shared';
 import { useAsync } from '@/lib/use-async';
 
 const HYPOTHETICAL_LIMIT = 4000;
@@ -27,6 +29,9 @@ export function NarrationPanel({ script }: { script: ScriptDetail }) {
   const [limitInput, setLimitInput] = useState(String(HYPOTHETICAL_LIMIT));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [estimate, setEstimate] = useState<AudioCostEstimate | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const budget = useAsync(api.budget);
 
   const providerLimit = status.data?.provider?.maxCharsPerRequest;
   const limit = providerLimit ?? Math.max(1, Math.floor(Number(limitInput)) || HYPOTHETICAL_LIMIT);
@@ -38,11 +43,25 @@ export function NarrationPanel({ script }: { script: ScriptDetail }) {
   }, [script.content, limit]);
   const words = countWords(script.content);
 
+  // Estimativa do custo (US$) da narração inteira com a voz escolhida; muda a voz, pede nova confirmação.
+  useEffect(() => {
+    setEstimate(null);
+    setConfirmed(false);
+    if (!available || !voiceId) return;
+    let live = true;
+    api.audioEstimate(script.id, voiceId).then((e) => live && setEstimate(e)).catch((e) => live && setError(e instanceof Error ? e.message : 'Erro ao estimar o custo'));
+    return () => { live = false; };
+  }, [available, voiceId, script.id]);
+
+  const overBudget = estimate && budget.data ? estimate.estimateUsd > budget.data.remainingUsd : false;
+
   async function generate() {
+    if (!estimate) return;
     setBusy(true);
     setError(null);
     try {
-      const a = await api.generateAudio({ scriptId: script.id, voiceId, settings: { speed } });
+      // O servidor só aceita se o custo autorizado cobrir a estimativa e couber no orçamento mensal.
+      const a = await api.generateAudio({ scriptId: script.id, voiceId, settings: { speed }, approvedMaxCostUsd: estimate.estimateUsd });
       router.push(`/audios/${a.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao iniciar a narração');
@@ -109,9 +128,29 @@ export function NarrationPanel({ script }: { script: ScriptDetail }) {
         )}
       </Card>
 
+      {available && estimate && (
+        <Card>
+          <h3 className="mb-2 font-medium">Custo e confirmação</h3>
+          <p className="text-sm text-muted">
+            Estimativa para {formatNumber(estimate.characters)} caracteres em {estimate.parts} parte(s):{' '}
+            <strong className="text-fg">US$ {estimate.estimateUsd.toFixed(2)}</strong>
+            {budget.data && <> · orçamento disponível no mês: <strong className="text-fg">US$ {budget.data.remainingUsd.toFixed(2)}</strong></>}
+          </p>
+          {(overBudget || budget.data?.monthlyLimitUsd === null) && (
+            <p role="alert" className="mt-2 text-sm text-warn">
+              {budget.data?.monthlyLimitUsd === null ? 'Nenhum orçamento mensal definido.' : 'A estimativa passa do orçamento disponível.'}{' '}
+              <Link href="/configuracoes" className="underline">Ajustar em Configurações</Link>
+            </p>
+          )}
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="mt-1 accent-brand" />
+            <span>Confirmo o custo estimado e autorizo gastar até US$ {estimate.estimateUsd.toFixed(2)} nesta narração.</span>
+          </label>
+        </Card>
+      )}
       {error && <ErrorBanner message={error} />}
       <div className="flex justify-end">
-        <Button onClick={generate} disabled={!available || !voiceId || words === 0 || busy} title={available ? undefined : 'Requer um provedor TTS configurado'}>
+        <Button onClick={generate} disabled={!available || !voiceId || !estimate || !confirmed || words === 0 || busy} title={available ? undefined : 'Requer um provedor TTS configurado'}>
           {busy ? 'Iniciando…' : 'Gerar narração'}
         </Button>
       </div>

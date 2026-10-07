@@ -47,16 +47,16 @@ export interface AudioPart {
 export type AudioFilters = Pick<AudioListQuery, 'channelId' | 'scriptId' | 'language' | 'status' | 'approval'>;
 
 export abstract class AudiosRepository {
-  abstract list(ownerId: string, filters: AudioFilters): AudioRecord[];
-  abstract find(ownerId: string, id: string): AudioRecord | undefined;
-  abstract create(ownerId: string, data: NewAudio): AudioRecord;
-  abstract update(ownerId: string, id: string, patch: AudioPatch): AudioRecord | undefined;
-  abstract remove(ownerId: string, id: string): boolean;
-  abstract count(ownerId: string): number;
-  abstract countByScript(ownerId: string, scriptId: string): number;
-  abstract insertParts(audioId: string, texts: string[]): void;
-  abstract listParts(audioId: string): AudioPart[];
-  abstract updatePart(audioId: string, idx: number, patch: { fileKey: string; mimeType: string; durationMs: number | null }): void;
-  /** Marca como erro tudo que ficou "processando" (o servidor reiniciou). Retorna quantos. */
-  abstract failInterrupted(message: string): number;
+  abstract list(ownerId: string, filters: AudioFilters): Promise<AudioRecord[]>;
+  abstract find(ownerId: string, id: string): Promise<AudioRecord | undefined>;
+  abstract findByFileKey(ownerId: string, fileKey: string): Promise<AudioRecord | undefined>;
+  abstract create(ownerId: string, data: NewAudio): Promise<AudioRecord>;
+  abstract update(ownerId: string, id: string, patch: AudioPatch): Promise<AudioRecord | undefined>;
+  abstract remove(ownerId: string, id: string): Promise<boolean>;
+  abstract count(ownerId: string): Promise<number>;
+  abstract insertParts(audioId: string, texts: string[]): Promise<void>;
+  abstract listParts(audioId: string): Promise<AudioPart[]>;
+  abstract updatePart(audioId: string, idx: number, patch: { fileKey: string; mimeType: string; durationMs: number | null }): Promise<void>;
+  /** Marca como erro os áudios "processando" que não têm mais nenhum job ativo (trabalho perdido). Retorna quantos. */
+  abstract failOrphaned(message: string): Promise<number>;
 }

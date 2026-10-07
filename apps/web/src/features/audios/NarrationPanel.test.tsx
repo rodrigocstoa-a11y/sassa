@@ -4,7 +4,8 @@ import type { ScriptDetail } from '@rrn/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/lib/api', () => ({ api: { audioGenerationStatus: vi.fn(), audioVoices: vi.fn(), generateAudio: vi.fn() } }));
+vi.mock('next/link', () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock('@/lib/api', () => ({ api: { audioGenerationStatus: vi.fn(), audioVoices: vi.fn(), generateAudio: vi.fn(), audioEstimate: vi.fn(), budget: vi.fn() } }));
 
 import { api } from '@/lib/api';
 import { NarrationPanel } from './NarrationPanel';
@@ -48,18 +49,41 @@ describe('NarrationPanel sem provedor TTS', () => {
 });
 
 describe('NarrationPanel com provedor', () => {
-  it('usa o limite do provedor e permite gerar com a voz escolhida', async () => {
-    vi.mocked(api.audioGenerationStatus).mockResolvedValue({ available: true, provider: { id: 'p', name: 'Provedor X', maxCharsPerRequest: 500 }, reason: null, requirements: [] });
+  const provider = { available: true, provider: { id: 'p', name: 'Provedor X', maxCharsPerRequest: 500 }, reason: null, requirements: [] };
+
+  beforeEach(() => {
+    vi.mocked(api.audioGenerationStatus).mockResolvedValue(provider);
     vi.mocked(api.audioVoices).mockResolvedValue({ available: true, voices: [{ id: 'v1', name: 'Ana', language: 'pt-BR' }], reason: null });
+    vi.mocked(api.audioEstimate).mockResolvedValue({ estimateUsd: 1.234, parts: 3, characters: 1200 });
     vi.mocked(api.generateAudio).mockResolvedValue({ id: 'a1' } as never);
+  });
+
+  it('usa o limite do provedor e só gera depois de escolher a voz e confirmar o custo', async () => {
+    vi.mocked(api.budget).mockResolvedValue({ monthlyLimitUsd: 50, spentUsd: 5, remainingUsd: 45, periodStart: '' });
     render(<NarrationPanel script={script} />);
     expect(await screen.findByText(/Limite do provedor: 500 caracteres/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Limite de caracteres por parte')).not.toBeInTheDocument();
     const btn = screen.getByRole('button', { name: 'Gerar narração' });
     await waitFor(() => expect(screen.getByLabelText('Voz')).toBeEnabled());
-    expect(btn).toBeDisabled(); // falta escolher a voz
+    expect(btn).toBeDisabled(); // falta a voz
+
     await userEvent.selectOptions(screen.getByLabelText('Voz'), 'v1');
+    expect(await screen.findByText('US$ 1.23')).toBeInTheDocument();
+    expect(screen.getByText('US$ 45.00')).toBeInTheDocument();
+    expect(btn).toBeDisabled(); // falta confirmar o custo
+
+    await userEvent.click(screen.getByRole('checkbox'));
+    expect(btn).toBeEnabled();
     await userEvent.click(btn);
-    expect(api.generateAudio).toHaveBeenCalledWith({ scriptId: 's1', voiceId: 'v1', settings: { speed: 1 } });
+    expect(api.generateAudio).toHaveBeenCalledWith({ scriptId: 's1', voiceId: 'v1', settings: { speed: 1 }, approvedMaxCostUsd: 1.234 });
+  });
+
+  it('avisa quando não há orçamento definido ou quando a estimativa não cabe', async () => {
+    vi.mocked(api.budget).mockResolvedValue({ monthlyLimitUsd: null, spentUsd: 0, remainingUsd: 0, periodStart: '' });
+    render(<NarrationPanel script={script} />);
+    await waitFor(() => expect(screen.getByLabelText('Voz')).toBeEnabled());
+    await userEvent.selectOptions(screen.getByLabelText('Voz'), 'v1');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nenhum orçamento mensal definido');
+    expect(screen.getByRole('link', { name: 'Ajustar em Configurações' })).toHaveAttribute('href', '/configuracoes');
   });
 });

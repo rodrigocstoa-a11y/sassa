@@ -67,14 +67,30 @@ export const audioUpdateSchema = z.object({
 });
 export type AudioUpdateInput = z.infer<typeof audioUpdateSchema>;
 
-/** Metadados enviados na query da importação (o corpo da requisição é o arquivo de áudio). */
-export const audioUploadQuerySchema = z.object({
+/** Etapa 1 do envio: o cliente informa o arquivo e recebe uma URL assinada para enviá-lo direto ao armazenamento. */
+export const audioUploadInitSchema = z.object({
   scriptId: z.string().trim().min(1, 'Escolha um roteiro'),
   title: z.string().trim().min(2, 'Informe ao menos 2 caracteres').max(200),
   filename: z.string().trim().max(255).optional(),
-  durationMs: z.coerce.number().int().min(0).max(86_400_000).optional(),
+  durationMs: z.number().int().min(0).max(86_400_000).optional(),
+  contentType: z.string().trim().min(1).max(100),
+  size: z.number().int().min(1, 'Arquivo vazio'),
 });
-export type AudioUploadQuery = z.infer<typeof audioUploadQuerySchema>;
+export type AudioUploadInit = z.infer<typeof audioUploadInitSchema>;
+
+export interface AudioUploadTarget {
+  uploadUrl: string;
+  method: 'PUT';
+  /** Cabeçalhos a enviar junto com o arquivo. */
+  headers: Record<string, string>;
+  /** Entregue de volta na etapa 2 para concluir o cadastro. */
+  uploadToken: string;
+  expiresInSec: number;
+}
+
+/** Etapa 2: o servidor confere o arquivo enviado (tamanho e formato pelos bytes) e cria o registro. */
+export const audioUploadCompleteSchema = z.object({ uploadToken: z.string().min(10) });
+export type AudioUploadComplete = z.infer<typeof audioUploadCompleteSchema>;
 
 export const narrationSettingsSchema = z.object({
   speed: z.number().min(0.5).max(2).default(1),
@@ -86,6 +102,8 @@ export const audioGenerationRequestSchema = z.object({
   voiceId: z.string().trim().min(1, 'Escolha uma voz'),
   title: z.string().trim().min(2).max(200).optional(),
   settings: narrationSettingsSchema.default({ speed: 1 }),
+  /** Custo máximo (US$) que você autoriza para esta narração. Deve cobrir a estimativa do provedor. */
+  approvedMaxCostUsd: z.number().min(0, 'Informe o custo máximo autorizado'),
 });
 export type AudioGenerationRequest = z.infer<typeof audioGenerationRequestSchema>;
 
@@ -95,6 +113,12 @@ export interface AudioGenerationStatus {
   reason: string | null;
   /** O que falta para habilitar a narração automática. Vazio quando disponível. */
   requirements: string[];
+}
+
+export interface AudioCostEstimate {
+  estimateUsd: number;
+  parts: number;
+  characters: number;
 }
 
 export interface AudioVoicesResponse {

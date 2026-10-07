@@ -1,10 +1,9 @@
 import 'reflect-metadata';
-import type { NestExpressApplication } from '@nestjs/platform-express';
-import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { createTestApp } from '../test/test-utils';
 
-let app: NestExpressApplication;
-let http: ReturnType<NestExpressApplication['getHttpServer']>;
+let ctx: Awaited<ReturnType<typeof createTestApp>>;
+let http: typeof ctx.http;
 let channelId: string;
 let otherChannelId: string;
 
@@ -18,18 +17,12 @@ const script = (over: Record<string, unknown> = {}) => ({
 });
 
 beforeAll(async () => {
-  process.env.DATABASE_PATH = ':memory:';
-  const { AppModule } = await import('../app.module');
-  const { configureApp } = await import('../configure-app');
-  const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = mod.createNestApplication<NestExpressApplication>({ bodyParser: false });
-  configureApp(app);
-  await app.init();
-  http = app.getHttpServer();
+  ctx = await createTestApp();
+  http = ctx.http;
   channelId = (await request(http).post('/api/channels').send(channel('Canal A'))).body.id;
   otherChannelId = (await request(http).post('/api/channels').send(channel('Canal B'))).body.id;
 });
-afterAll(() => app.close());
+afterAll(() => ctx.close());
 
 describe('Roteiros: CRUD e regras', () => {
   let id: string;

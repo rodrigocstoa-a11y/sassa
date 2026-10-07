@@ -31,7 +31,7 @@ export class ChannelsController {
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id') id: string) {
-    this.channels.remove(id);
+  async remove(@Param('id') id: string) {
+    await this.channels.remove(id);
   }
 }

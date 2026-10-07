@@ -1,0 +1,57 @@
+# Ambiente "como na nuvem" no seu computador (PostgreSQL + S3 compatível + API + worker + site).
+# Requer Docker. Uso:  docker compose up --build   e abra http://localhost:3000
+# As credenciais abaixo são APENAS para este uso local, não use em produção.
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_PASSWORD: rrn, POSTGRES_DB: rrn }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, retries: 10 }
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: rrnminio, MINIO_ROOT_PASSWORD: rrnminio-secret }
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  minio-setup:
+    image: minio/mc
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 rrnminio rrnminio-secret; do sleep 1; done;
+      mc mb -p local/rrn-studio; mc anonymous set none local/rrn-studio;
+      mc admin config set local api cors_allow_origin='http://localhost:3000'; exit 0"
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    depends_on: { postgres: { condition: service_healthy }, minio-setup: { condition: service_completed_successfully } }
+    environment: &api-env
+      ROLE: api
+      DATABASE_URL: postgres://postgres:rrn@postgres:5432/rrn
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://localhost:9000   # o navegador usa esta URL nas URLs assinadas
+      S3_BUCKET: rrn-studio
+      S3_ACCESS_KEY_ID: rrnminio
+      S3_SECRET_ACCESS_KEY: rrnminio-secret
+      S3_FORCE_PATH_STYLE: "true"
+      APP_SECRET: troque-este-segredo-local-com-32-caracteres-no-minimo
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: senha-local-de-teste-123
+      WEB_ORIGINS: http://localhost:3000
+    ports: ["3001:3001"]
+
+  worker:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    depends_on: { api: { condition: service_started } }
+    environment:
+      <<: *api-env
+      ROLE: worker
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    depends_on: [api]
+    environment: { API_URL: "http://api:3001" }
+    ports: ["3000:3000"]
+
+volumes: { pgdata: {}, miniodata: {} }

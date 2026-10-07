@@ -60,7 +60,7 @@ export function ImportPanel({ script, channel }: { script: ScriptDetail; channel
     <Card>
       <h3 className="mb-1 font-medium">Importar áudio existente</h3>
       <p className="mb-4 text-sm text-muted">
-        Envie uma narração produzida fora da plataforma. Formatos: {AUDIO_FORMATS.map((f) => f.label).join(', ')}. O formato é verificado pelo conteúdo do arquivo.
+        Envie uma narração produzida fora da plataforma. Formatos: {AUDIO_FORMATS.map((f) => f.label).join(', ')}. O arquivo é enviado direto ao armazenamento e o formato é verificado pelo conteúdo.
       </p>
       <div className="mb-4 rounded-lg bg-surface-2 p-3 text-sm text-muted">
         Será vinculado ao roteiro <strong className="text-fg">{script.title}</strong>

@@ -4,7 +4,7 @@ import { LLM_PROVIDER, ScriptGenerationService } from './script-generation.servi
 import { ScriptsController } from './scripts.controller';
 import { ScriptsRepository } from './scripts.repository';
 import { ScriptsService } from './scripts.service';
-import { SqliteScriptsRepository } from './sqlite-scripts.repository';
+import { PgScriptsRepository } from './pg-scripts.repository';
 
 @Module({
   imports: [ChannelsModule],
@@ -12,7 +12,7 @@ import { SqliteScriptsRepository } from './sqlite-scripts.repository';
   providers: [
     ScriptsService,
     ScriptGenerationService,
-    { provide: ScriptsRepository, useClass: SqliteScriptsRepository },
+    { provide: ScriptsRepository, useClass: PgScriptsRepository },
     // Sem provedor LLM nesta fase. Uma integração futura substitui este valor.
     { provide: LLM_PROVIDER, useValue: null },
   ],
